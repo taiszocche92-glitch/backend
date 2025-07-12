@@ -174,11 +174,22 @@ io.on('connection', (socket) => {
 
   // --- Lógica de Desconexão ---
 
-  socket.on('disconnect', (reason) => {
+  socket.on('disconnect', async (reason) => {
     console.log(`[DESCONEXÃO] Cliente ${socket.id} (userId: ${userId}) desconectado. Razão: ${reason}`);
     if (session && session.participants.has(userId)) {
       session.participants.delete(userId);
       console.log(`[LEAVE] Usuário ${displayName} (${role}) removido da sessão ${sessionId}`);
+
+      // Atualiza status do usuário para offline no Firestore
+      try {
+        await db.collection('usuarios').doc(userId).update({
+          status: 'offline',
+          lastActive: new Date().toISOString(),
+        });
+        console.log(`[FIRESTORE] Status do usuário ${userId} atualizado para OFFLINE após desconexão.`);
+      } catch (err) {
+        console.error(`[FIRESTORE] Erro ao atualizar status OFFLINE do usuário ${userId}:`, err);
+      }
 
       // Notifica o participante restante
       socket.to(sessionId).emit('SERVER_PARTNER_DISCONNECTED', { 
