@@ -2,3 +2,7 @@ node_modules/
 .env
 *.log
 *.tar
+
+# Firebase Admin SDK credentials
+*firebase-adminsdk*.json
+!*firebase-adminsdk*.json.example
