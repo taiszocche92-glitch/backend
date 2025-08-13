@@ -1,0 +1,13 @@
+ # Ignorar dependências, pois elas são instaladas dentro do contêiner
+ node_modules
+ 
+ # Ignorar arquivos de log e ambiente local
+ npm-debug.log
+ .env
+ 
+ # Ignorar arquivos do Git
+ .git
+ .gitignore
+ 
+ # Ignorar arquivos do Docker
+ Dockerfile

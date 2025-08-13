@@ -102,41 +102,43 @@ async function collectAllData(db, user, question, page) {
     });
     
     // **2. USUÁRIOS ATIVOS**
-    try {
-      const usersSnapshot = await db.collection('users').limit(10).get();
-      usersSnapshot.forEach(doc => {
-        const userData = doc.data();
-        data.users.push({
-          id: doc.id,
-          name: userData.name,
-          email: userData.email,
-          role: userData.role,
-          lastLogin: userData.lastLoginAt?.toDate?.() || userData.lastLoginAt
-        });
+    const usersSnapshot = await db.collection('users')
+      .where('isActive', '==', true)
+      .orderBy('lastLoginAt', 'desc')
+      .limit(10)
+      .get();
+    usersSnapshot.forEach(doc => {
+      const userData = doc.data();
+      data.users.push({
+        id: doc.id,
+        name: userData.name,
+        email: userData.email,
+        role: userData.role,
+        lastLogin: userData.lastLoginAt?.toDate?.() || userData.lastLoginAt
       });
-    } catch (usersError) {
-      console.warn('Erro ao buscar usuários:', usersError.message);
-    }
+    });
     
     // **3. SESSÕES ATIVAS E RECENTES**
-    try {
-      const sessionsSnapshot = await db.collection('simulation_sessions').limit(20).get();
-      sessionsSnapshot.forEach(doc => {
-        data.sessions.push({ id: doc.id, ...doc.data() });
-      });
-    } catch (sessionsError) {
-      console.warn('Erro ao buscar sessões:', sessionsError.message);
-    }
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
+    const sessionsSnapshot = await db.collection('simulation_sessions')
+      .where('startedAt', '>=', yesterday)
+      .orderBy('startedAt', 'desc')
+      .limit(20)
+      .get();
+    sessionsSnapshot.forEach(doc => {
+      data.sessions.push({ id: doc.id, ...doc.data() });
+    });
     
     // **4. PONTUAÇÕES E AVALIAÇÕES RECENTES**
-    try {
-      const scoresSnapshot = await db.collection('simulation_scores').limit(30).get();
-      scoresSnapshot.forEach(doc => {
-        data.scores.push({ id: doc.id, ...doc.data() });
-      });
-    } catch (scoresError) {
-      console.warn('Erro ao buscar pontuações:', scoresError.message);
-    }
+    const scoresSnapshot = await db.collection('simulation_scores')
+      .orderBy('completedAt', 'desc')
+      .limit(50)
+      .get();
+    scoresSnapshot.forEach(doc => {
+      data.scores.push({ id: doc.id, ...doc.data() });
+    });
     
     // **5. PROGRESSO DO USUÁRIO ATUAL**
     if (!user?.isAnonymous) {
@@ -201,19 +203,41 @@ async function collectAllData(db, user, question, page) {
 
 // **FUNÇÃO PARA CONSTRUIR QUERY INTELIGENTE DE ESTAÇÕES**
 function buildStationsQuery(db, question) {
-  try {
-    let query = db.collection('estacoes_clinicas');
-    const questionLower = question.toLowerCase();
-    
-    // QUERY SIMPLES SEM FILTROS COMPLEXOS (evita problemas de índice)
-    // Apenas limite de resultados para performance
-    return query.limit(20);
-    
-  } catch (error) {
-    console.warn('Erro na query de estações, usando fallback:', error.message);
-    // Fallback: query mais simples possível
-    return db.collection('estacoes_clinicas').limit(10);
+  let query = db.collection('estacoes_clinicas');
+  const questionLower = question.toLowerCase();
+  
+  // Filtros por especialidade
+  if (questionLower.includes('cardiologia') || questionLower.includes('coração')) {
+    return query.where('especialidade', '==', 'Cardiologia').limit(10);
   }
+  if (questionLower.includes('pediatria') || questionLower.includes('criança')) {
+    return query.where('especialidade', '==', 'Pediatria').limit(10);
+  }
+  if (questionLower.includes('cirurgia') || questionLower.includes('cirúrgica')) {
+    return query.where('especialidade', '==', 'Cirurgia').limit(10);
+  }
+  if (questionLower.includes('ginecologia') || questionLower.includes('obstétrica')) {
+    return query.where('especialidade', '==', 'Ginecologia e Obstetrícia').limit(10);
+  }
+  
+  // Filtros por dificuldade
+  if (questionLower.includes('difícil') || questionLower.includes('avançad')) {
+    return query.where('nivelDificuldade', '==', 'Difícil').limit(10);
+  }
+  if (questionLower.includes('fácil') || questionLower.includes('básic')) {
+    return query.where('nivelDificuldade', '==', 'Fácil').limit(10);
+  }
+  
+  // Filtros por origem
+  if (questionLower.includes('inep') || questionLower.includes('prova anterior')) {
+    return query.where('origem', '==', 'INEP').limit(10);
+  }
+  if (questionLower.includes('revalida fácil') || questionLower.includes('própria')) {
+    return query.where('origem', '==', 'REVALIDA_FACIL').limit(10);
+  }
+  
+  // Query padrão - últimas estações
+  return query.orderBy('dataCriacao', 'desc').limit(15);
 }
 
 // **FUNÇÃO PARA GERAR RESPOSTA INTELIGENTE**

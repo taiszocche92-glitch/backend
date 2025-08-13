@@ -20,7 +20,7 @@ try {
     };
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'revalida-companion.appspot.com'
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'revalida-companion.firebasestorage.app'
     });
     console.log('✅ Firebase Admin SDK inicializado com variáveis de ambiente');
   } else {
@@ -28,7 +28,7 @@ try {
     const serviceAccount = require('./revalida-companion-firebase-adminsdk.json');
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      storageBucket: 'revalida-companion.appspot.com'
+      storageBucket: 'revalida-companion.firebasestorage.app'
     });
     console.log('✅ Firebase Admin SDK inicializado com arquivo local');
   }
@@ -41,20 +41,31 @@ try {
 const app = express();
 const server = http.createServer(app);
 
-// Use a variável de ambiente para a URL do frontend.
-// Isso permite que você configure facilmente a origem em diferentes ambientes (produção, desenvolvimento).
-// Por padrão, usa localhost para desenvolvimento se a variável não estiver definida.
-const allowedOrigin = process.env.FRONTEND_URL || "http://localhost:3000"; 
+// URLs permitidas para CORS (inclui todos os seus domínios)
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173", 
+  "https://revalida-companion.web.app",
+  "https://revalida-companion.firebaseapp.com", 
+  "https://revalidafacilapp.com.br"
+];
+
+console.log('🔒 CORS configurado para domínios:', allowedOrigins);
 
 // Configuração do CORS para o Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: "*", // Permite qualquer origem. Para produção, restrinja a URL do seu frontend.
-    methods: ["GET", "POST"]
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
-app.use(cors());
+// Configuração do CORS para rotas HTTP
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
 app.use(express.json());
 
 // --- Importação das rotas do agente ---
