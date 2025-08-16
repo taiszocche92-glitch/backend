@@ -68,10 +68,91 @@ router.post('/query', authenticateUser, async (req, res) => {
           <details><summary>Detalhes técnicos</summary><code>${error.message}</code></details>
         </div>
       `,
-      error: error.message 
+      error: error.message
     });
   }
 });
+
+// **ENDPOINT PARA ANÁLISE E ADMINISTRAÇÃO DE ESTAÇÕES**
+router.post('/admin-analysis', authenticateUser, async (req, res) => {
+  try {
+    const { action, stationId, fixes } = req.body;
+    console.log('⚙️ Admin Agent recebeu:', { action, stationId, user: req.user?.uid });
+
+    if (global.firebaseMockMode) {
+      return res.json({
+        message: `Modo de demonstração: Ação '${action}' para estação '${stationId}' (mock).`
+      });
+    }
+
+    const db = admin.firestore();
+
+    let result;
+    switch (action) {
+      case 'analyze-station':
+        result = await handleAnalyzeStation(db, stationId);
+        break;
+      case 'analyze-all':
+        result = await handleAnalyzeAllStations(db);
+        break;
+      case 'suggest-improvements':
+        result = await handleGenerateSuggestions(db, stationId);
+        break;
+      case 'auto-fix':
+        result = await handleAutoFixStation(db, stationId, fixes);
+        break;
+      case 'validate-pep':
+        result = await handleValidatePEP(db, stationId);
+        break;
+      default:
+        return res.status(400).json({ error: 'Ação de administração desconhecida.' });
+    }
+
+    console.log(`✅ Admin Agent respondeu para ação '${action}'`);
+    res.json(result);
+
+  } catch (error) {
+    console.error('❌ Erro no agente de administração:', error);
+    res.status(500).json({
+      error: `Erro no processamento da ação de administração: ${error.message}`
+    });
+  }
+});
+
+// **FUNÇÕES AUXILIARES PARA ADMIN-ANALYSIS**
+
+async function handleAnalyzeStation(db, stationId) {
+  // Implementar lógica de análise de estação específica
+  console.log(`Analisando estação: ${stationId}`);
+  return { status: 'success', message: `Análise da estação ${stationId} concluída (mock).` };
+}
+
+async function handleAnalyzeAllStations(db) {
+  // Implementar lógica de análise de todas as estações
+  console.log('Analisando todas as estações...');
+  // Exemplo: buscar todas as estações e retornar um resumo
+  const stationsSnapshot = await db.collection('estacoes_clinicas').get();
+  const totalStations = stationsSnapshot.size;
+  return { status: 'success', message: `Análise de todas as ${totalStations} estações concluída (mock).` };
+}
+
+async function handleGenerateSuggestions(db, stationId) {
+  // Implementar lógica de geração de sugestões
+  console.log(`Gerando sugestões para estação: ${stationId}`);
+  return { status: 'success', message: `Sugestões para ${stationId} geradas (mock).` };
+}
+
+async function handleAutoFixStation(db, stationId, fixes) {
+  // Implementar lógica de correção automática
+  console.log(`Aplicando correções para estação: ${stationId}, fixes: ${fixes}`);
+  return { status: 'success', message: `Correções para ${stationId} aplicadas (mock).` };
+}
+
+async function handleValidatePEP(db, stationId) {
+  // Implementar lógica de validação PEP
+  console.log(`Validando PEP para estação: ${stationId}`);
+  return { status: 'success', message: `Validação PEP para ${stationId} concluída (mock).` };
+}
 
 // **FUNÇÃO PARA COLETAR DADOS DE TODAS AS COLEÇÕES**
 async function collectAllData(db, user, question, page) {

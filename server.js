@@ -84,6 +84,16 @@ const sessions = new Map();
 // Endpoint de verificação de saúde
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date() });
+// Endpoint para listar usuários do Firestore
+app.get('/api/users', async (req, res) => {
+  try {
+    const usersSnapshot = await admin.firestore().collection('users').get();
+    const users = usersSnapshot.docs.map(doc => doc.data());
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 });
 
 // Endpoint para criar uma nova sessão de simulação (pouco usado com a lógica atual de socket)
