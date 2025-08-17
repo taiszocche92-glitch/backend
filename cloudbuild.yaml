@@ -5,7 +5,6 @@ steps:
       - "-t"
       - "gcr.io/$PROJECT_ID/github.com/drhackermedicina/backendraiway:$COMMIT_SHA"
       - .
-    dir: backend
 images:
   - "gcr.io/$PROJECT_ID/github.com/drhackermedicina/backendraiway:$COMMIT_SHA"
 options:
