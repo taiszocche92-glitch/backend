@@ -128,12 +128,10 @@ async function handleAnalyzeStation(db, stationId) {
 }
 
 async function handleAnalyzeAllStations(db) {
-  // Implementar lógica de análise de todas as estações
   console.log('Analisando todas as estações...');
-  // Exemplo: buscar todas as estações e retornar um resumo
   const stationsSnapshot = await db.collection('estacoes_clinicas').get();
-  const totalStations = stationsSnapshot.size;
-  return { status: 'success', message: `Análise de todas as ${totalStations} estações concluída (mock).` };
+  const stations = stationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return { status: 'success', stations };
 }
 
 async function handleGenerateSuggestions(db, stationId) {
