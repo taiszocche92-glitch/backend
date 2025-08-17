@@ -1,3 +1,4 @@
+// Forçando novo deploy para atualizar a rota de análise
 const express = require('express');
 const router = express.Router();
 const admin = require('firebase-admin');
