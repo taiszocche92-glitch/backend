@@ -5,8 +5,37 @@ steps:
       - "-t"
       - "gcr.io/$PROJECT_ID/github.com/drhackermedicina/backendraiway:$COMMIT_SHA"
       - .
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "gcloud"
+    args:
+      - "run"
+      - "deploy"
+      - "revalida-backend"
+      - "--image"
+      - "gcr.io/$PROJECT_ID/github.com/drhackermedicina/backendraiway:$COMMIT_SHA"
+      - "--region"
+      - "southamerica-east1"
+      - "--platform"
+      - "managed"
+      - "--allow-unauthenticated"
+      - "--service-account"
+      - "cloud-build-service@revalida-companion.iam.gserviceaccount.com"
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "gcloud"
+    args:
+      - "run"
+      - "deploy"
+      - "revalida-backend"
+      - "--image"
+      - "gcr.io/$PROJECT_ID/github.com/drhackermedicina/backendraiway:$COMMIT_SHA"
+      - "--region"
+      - "southamerica-east1"
+      - "--platform"
+      - "managed"
+      - "--allow-unauthenticated"
+      - "--service-account"
+      - "cloud-build-service@revalida-companion.iam.gserviceaccount.com"
 images:
   - "gcr.io/$PROJECT_ID/github.com/drhackermedicina/backendraiway:$COMMIT_SHA"
 options:
   logging: CLOUD_LOGGING_ONLY
-
