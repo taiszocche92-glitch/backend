@@ -10,3 +10,4 @@ images:
   - "gcr.io/$PROJECT_ID/github.com/drhackermedicina/backendraiway:$COMMIT_SHA"
 options:
   logging: CLOUD_LOGGING_ONLY
+
