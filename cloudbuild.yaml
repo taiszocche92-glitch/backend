@@ -5,6 +5,10 @@ steps:
       - "-t"
       - "southamerica-east1-docker.pkg.dev/$PROJECT_ID/default/revalida-backend:$COMMIT_SHA"
       - .
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - push
+      - "southamerica-east1-docker.pkg.dev/$PROJECT_ID/default/revalida-backend:$COMMIT_SHA"
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: "gcloud"
     args:
@@ -18,6 +22,8 @@ steps:
       - "--platform"
       - "managed"
       - "--allow-unauthenticated"
+      - "--service-account"
+      - "cloud-build-service@revalida-companion.iam.gserviceaccount.com"
       - "--service-account"
       - "cloud-build-service@revalida-companion.iam.gserviceaccount.com"
       - "--region"
