@@ -84,6 +84,8 @@ const sessions = new Map();
 // Endpoint de verificação de saúde
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date() });
+});
+
 // Endpoint para listar usuários do Firestore
 app.get('/api/users', async (req, res) => {
   try {
@@ -93,7 +95,6 @@ app.get('/api/users', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
 });
 
 // Endpoint para criar uma nova sessão de simulação (pouco usado com a lógica atual de socket)
@@ -331,8 +332,34 @@ io.on('connection', (socket) => {
 
   // --- Limpeza do mapeamento ao desconectar ---
   socket.on('disconnect', () => {
+    console.log(`[DESCONEXÃO] Cliente desconectado: ${socket.id}`);
+    
+    // Limpa o mapeamento global
     if (handshakeUserId) {
       userIdToSocketId.delete(handshakeUserId);
+    }
+
+    // Lógica para remover o participante de qualquer sessão ativa
+    if (sessionId && userId) {
+      const session = sessions.get(sessionId);
+      if (session && session.participants.has(userId)) {
+        session.participants.delete(userId);
+        console.log(`[LEAVE] Usuário ${displayName} (${role}) removido da sessão ${sessionId} por desconexão.`);
+        
+        // Notifica o outro participante que o parceiro saiu
+        const remainingParticipants = Array.from(session.participants.values());
+        io.to(sessionId).emit('SERVER_PARTNER_LEFT', {
+          message: 'Seu parceiro de simulação se desconectou.',
+          participants: remainingParticipants
+        });
+
+        // Se a sessão ficar vazia, pode ser removida
+        if (session.participants.size === 0) {
+          stopSessionTimer(sessionId, 'session_empty');
+          sessions.delete(sessionId);
+          console.log(`[SESSÃO ENCERRADA] Sessão ${sessionId} removida por estar vazia.`);
+        }
+      }
     }
   });
 });
