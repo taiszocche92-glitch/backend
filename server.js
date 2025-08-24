@@ -24,13 +24,7 @@ try {
     });
     console.log('✅ Firebase Admin SDK inicializado com variáveis de ambiente');
   } else {
-    // Fallback: usar arquivo de credenciais local
-    const serviceAccount = require('./revalida-companion-firebase-adminsdk.json');
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      storageBucket: 'revalida-companion.firebasestorage.app'
-    });
-    console.log('✅ Firebase Admin SDK inicializado com arquivo local');
+    throw new Error('Credenciais do Firebase não encontradas nas variáveis de ambiente. Configure via Secret Manager.');
   }
 } catch (error) {
   console.warn('⚠️  Erro ao inicializar Firebase Admin SDK:', error.message);
@@ -68,11 +62,20 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// --- Importação das rotas do agente ---
-const agentRoutes = require('./routes/agent');
+// --- DEBUG INSTRUMENTATION (temporário) ---
+const debugStats = {
+  http: [],            // { ts, ip, method, path, ua }
+  firestoreReads: [],  // { ts, path, ip, ua, docsRead }
+  socketConnections: []// { ts, socketId, userId, query, address }
+};
+function addHttpLog(entry) {
+  debugStats.http.push(entry);
+  if (debugStats.http.length > 500) debugStats.http.shift();
+}
+// --- fim debug ---
 
-// --- Configuração das rotas ---
-app.use('/api/agent', agentRoutes);
+// --- Agente removido ---
+// Rotas do agente legacy removidas. Se precisar restaurar, recupere de um commit anterior.
 
 // --- Gerenciamento de Sessões ---
 // Lembrete: Este Map em memória é perdido se o servidor reiniciar.
@@ -91,6 +94,23 @@ app.get('/api/users', async (req, res) => {
   try {
     const usersSnapshot = await admin.firestore().collection('users').get();
     const users = usersSnapshot.docs.map(doc => doc.data());
+
+    // Instrumentação: conta documentos lidos e registra no debugStats
+    try {
+      const readEntry = {
+        ts: new Date().toISOString(),
+        path: req.path,
+        ip: req.ip,
+        ua: req.get('user-agent'),
+        docsRead: usersSnapshot.size
+      };
+      debugStats.firestoreReads.push(readEntry);
+      if (debugStats.firestoreReads.length > 500) debugStats.firestoreReads.shift();
+      console.log(`[FIRESTORE READ] ${readEntry.ts} ${readEntry.path} ip=${readEntry.ip} ua="${readEntry.ua}" docs=${readEntry.docsRead}`);
+    } catch (e) {
+      console.warn('[DEBUG] Falha ao registrar firestoreReads:', e && e.message);
+    }
+
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -112,6 +132,19 @@ app.post('/api/create-session', (req, res) => {
   });
   console.log(`[HTTP] Nova sessão criada via API: ${sessionId}`);
   res.status(201).json({ sessionId });
+});
+
+// --- ENDPOINT DE DEBUG (temporário) ---
+app.get('/debug/metrics', (req, res) => {
+  const lastHttp = debugStats.http.slice(-100);
+  const lastReads = debugStats.firestoreReads.slice(-100);
+  const lastSockets = debugStats.socketConnections.slice(-100);
+  res.json({
+    now: new Date().toISOString(),
+    http: lastHttp,
+    firestoreReads: lastReads,
+    socketConnections: lastSockets
+  });
 });
 
 
@@ -152,7 +185,22 @@ io.on('connection', (socket) => {
     userIdToSocketId.set(handshakeUserId, socket.id);
   }
 
-  console.log(`[CONEXÃO] Novo cliente conectado: ${socket.id}`);
+  // Registra conexão no debugStats
+  try {
+    const connTs = new Date().toISOString();
+    const connEntry = {
+      ts: connTs,
+      socketId: socket.id,
+      userId: handshakeUserId || null,
+      query: socket.handshake.query || {},
+      address: socket.handshake.address || (socket.request && socket.request.connection && socket.request.connection.remoteAddress) || null
+    };
+    debugStats.socketConnections.push(connEntry);
+    if (debugStats.socketConnections.length > 1000) debugStats.socketConnections.shift();
+    console.log(`[CONEXÃO] Novo cliente conectado: ${socket.id} userId=${handshakeUserId} remote=${connEntry.address}`);
+  } catch (e) {
+    console.log(`[CONEXÃO] Novo cliente conectado: ${socket.id} (erro ao registrar debug)`);
+  }
 
   // --- Eventos globais de convite/chat (NÃO dependem de sessão) ---
   socket.on('INTERNAL_INVITE', (data) => {
