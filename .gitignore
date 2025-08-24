@@ -6,3 +6,6 @@ node_modules/
 # Firebase Admin SDK credentials
 *firebase-adminsdk*.json
 !*firebase-adminsdk*.json.example
+# Permitir arquivos de workflow
+!.github/
+!.github/workflows/
