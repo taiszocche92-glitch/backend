@@ -25,13 +25,13 @@ jobs:
       - name: Build and push Docker image
         run: |
           gcloud auth configure-docker us-central1-docker.pkg.dev
-          docker build -t us-central1-docker.pkg.dev/revalida-companion/backend-revalida/backend:latest .
-          docker push us-central1-docker.pkg.dev/revalida-companion/backend-revalida/backend:latest
+          docker build -t southamerica-east1-docker.pkg.dev/revalida-companion/cloud-run-source-deploy/backend:latest .
+          docker push southamerica-east1-docker.pkg.dev/revalida-companion/cloud-run-source-deploy/backend:latest
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy backend-revalida \
-            --image=us-central1-docker.pkg.dev/revalida-companion/backend-revalida/backend:latest \
-            --region=us-central1 \
+            --image=southamerica-east1-docker.pkg.dev/revalida-companion/cloud-run-source-deploy/backend:latest \
+            --region=southamerica-east1 \
             --platform=managed \
             --allow-unauthenticated
