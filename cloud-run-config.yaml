@@ -1,0 +1,78 @@
+# Configuração otimizada do Cloud Run para reduzir custos
+# Aplicar com: gcloud run services update SERVICE_NAME --region southamerica-east1 --source cloud-run-config.yaml
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: revalida-backend
+  labels:
+    app: revalida-backend
+spec:
+  template:
+    metadata:
+      annotations:
+        # Configurações de escalabilidade para reduzir custos
+        autoscaling.knative.dev/minScale: "0"  # Mínimo 0 instâncias quando inativo
+        autoscaling.knative.dev/maxScale: "10"  # Máximo 10 instâncias
+        autoscaling.knative.dev/target: "80"    # CPU target 80%
+        autoscaling.knative.dev/metric: "concurrency"  # Baseado em concorrência
+
+        # Configurações de timeout para reduzir tempo de execução
+        run.googleapis.com/execution-environment: "gen2"
+        run.googleapis.com/cpu-throttling: "true"
+        run.googleapis.com/startup-cpu-boost: "false"
+
+        # Configurações de memória otimizadas
+        run.googleapis.com/memory: "512Mi"
+        run.googleapis.com/concurrency: "80"  # Máximo 80 requests por instância
+
+        # Configurações de timeout
+        run.googleapis.com/timeout-seconds: "300"  # 5 minutos máximo por request
+
+    spec:
+      serviceAccountName: cloud-run-sa@revalida-companion.iam.gserviceaccount.com
+      containers:
+      - image: gcr.io/revalida-companion/revalida-backend:latest
+        ports:
+        - containerPort: 3000
+        resources:
+          limits:
+            cpu: "1000m"    # 1 vCPU
+            memory: "512Mi"
+          requests:
+            cpu: "500m"     # 0.5 vCPU mínimo
+            memory: "256Mi" # 256MB mínimo
+
+        # Variáveis de ambiente para otimização
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: OPTIMIZE_MEMORY
+          value: "true"
+        - name: MAX_CONNECTIONS
+          value: "50"
+
+        # Health checks otimizados
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 60  # Menos frequente para reduzir custos
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+  traffic:
+  - percent: 100
+    latestRevision: true
+
+---
+# Comando para aplicar esta configuração:
+# gcloud run services replace cloud-run-config.yaml --region southamerica-east1
+#
+# Monitorar custos:
+# gcloud billing accounts list
+# gcloud billing budgets list
+#
+# Verificar escalabilidade atual:
+# gcloud run services describe revalida-backend --region southamerica-east1

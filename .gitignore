@@ -2,10 +2,24 @@ node_modules/
 .env
 *.log
 *.tar
-
+.env.example
 # Firebase Admin SDK credentials
 *firebase-adminsdk*.json
 !*firebase-adminsdk*.json.example
 # Permitir arquivos de workflow
 !.github/
 !.github/workflows/
+
+# === Regras adicionadas pela Gemini para limpeza ===
+# Ignorar configurações do VSCode
+**/.vscode/
+
+# Ignorar arquivos de servidor antigos ou de teste
+server-simple.js
+
+# Ignorar credenciais específicas (já cobertas pela regra acima, mas bom ter explícito)
+revalida-companion-firebase-adminsdk.json
+
+# Ignorar binários e arquivos de instalação
+ngrok.exe
+ngrok.zip
