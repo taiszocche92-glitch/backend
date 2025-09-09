@@ -1,0 +1,248 @@
+# Configuração de Alertas para Monitoramento de Custos Cloud Run
+# Aplicar via: gcloud monitoring channels create --config-from-file=cloud-monitoring-alerts.yaml
+
+# 1. Alerta para Alto Uso de CPU no Cloud Run
+high-cpu-alert:
+  displayName: "Alto Uso de CPU - Cloud Run"
+  description: "CPU acima de 80% por mais de 5 minutos"
+  conditions:
+    - displayName: "CPU Usage > 80%"
+      conditionThreshold:
+        filter: >
+          resource.type = "cloud_run_revision"
+          AND resource.labels.service_name = "revalida-backend"
+          AND metric.type = "run.googleapis.com/container/cpu/utilizations"
+        aggregations:
+          - alignmentPeriod: "300s"
+            crossSeriesReducer: REDUCE_MEAN
+            perSeriesAligner: ALIGN_MEAN
+        comparison: COMPARISON_GT
+        duration: "300s"
+        thresholdValue: 0.8
+        trigger:
+          count: 1
+  notificationChannels:
+    - email
+  enabled: true
+
+# 2. Alerta para Alto Uso de Memória
+high-memory-alert:
+  displayName: "Alto Uso de Memória - Cloud Run"
+  description: "Memória acima de 85% por mais de 5 minutos"
+  conditions:
+    - displayName: "Memory Usage > 85%"
+      conditionThreshold:
+        filter: >
+          resource.type = "cloud_run_revision"
+          AND resource.labels.service_name = "revalida-backend"
+          AND metric.type = "run.googleapis.com/container/memory/utilizations"
+        aggregations:
+          - alignmentPeriod: "300s"
+            crossSeriesReducer: REDUCE_MEAN
+            perSeriesAligner: ALIGN_MEAN
+        comparison: COMPARISON_GT
+        duration: "300s"
+        thresholdValue: 0.85
+        trigger:
+          count: 1
+  notificationChannels:
+    - email
+  enabled: true
+
+# 3. Alerta para Alto Número de Solicitações
+high-request-rate-alert:
+  displayName: "Alto Volume de Solicitações - Cloud Run"
+  description: "Mais de 1000 solicitações por minuto"
+  conditions:
+    - displayName: "Request Rate > 1000/min"
+      conditionThreshold:
+        filter: >
+          resource.type = "cloud_run_revision"
+          AND resource.labels.service_name = "revalida-backend"
+          AND metric.type = "run.googleapis.com/request_count"
+        aggregations:
+          - alignmentPeriod: "60s"
+            crossSeriesReducer: REDUCE_SUM
+            perSeriesAligner: ALIGN_RATE
+        comparison: COMPARISON_GT
+        duration: "300s"
+        thresholdValue: 1000
+        trigger:
+          count: 1
+  notificationChannels:
+    - email
+  enabled: true
+
+# 4. Alerta para Instâncias Ativas Prolongadas
+long-running-instances-alert:
+  displayName: "Instâncias Ativas Prolongadas"
+  description: "Instâncias ativas por mais de 30 minutos (possível vazamento)"
+  conditions:
+    - displayName: "Active Instances > 0 for 30min"
+      conditionThreshold:
+        filter: >
+          resource.type = "cloud_run_revision"
+          AND resource.labels.service_name = "revalida-backend"
+          AND metric.type = "run.googleapis.com/container/instance_count"
+        aggregations:
+          - alignmentPeriod: "60s"
+            crossSeriesReducer: REDUCE_SUM
+            perSeriesAligner: ALIGN_MEAN
+        comparison: COMPARISON_GT
+        duration: "1800s"  # 30 minutos
+        thresholdValue: 0
+        trigger:
+          count: 1
+  notificationChannels:
+    - email
+  enabled: true
+
+# 5. Alerta para Aumento Súbito de Custos
+cost-spike-alert:
+  displayName: "Aumento Súbito de Custos"
+  description: "Custos diários acima de R$ 50,00"
+  conditions:
+    - displayName: "Daily Cost > R$ 50"
+      conditionThreshold:
+        filter: >
+          resource.type = "cloud_run_revision"
+          AND resource.labels.service_name = "revalida-backend"
+          AND metric.type = "run.googleapis.com/container/billable_instance_time"
+        aggregations:
+          - alignmentPeriod: "86400s"  # 24 horas
+            crossSeriesReducer: REDUCE_SUM
+            perSeriesAligner: ALIGN_SUM
+        comparison: COMPARISON_GT
+        duration: "3600s"  # 1 hora
+        thresholdValue: 50  # R$ 50,00 (ajuste conforme necessário)
+        trigger:
+          count: 1
+  notificationChannels:
+    - email
+  enabled: true
+
+# 6. Alerta para Erros de Conexão WebSocket
+websocket-errors-alert:
+  displayName: "Erros de Conexão WebSocket"
+  description: "Taxa de erro de WebSocket acima de 10%"
+  conditions:
+    - displayName: "WebSocket Error Rate > 10%"
+      conditionThreshold:
+        filter: >
+          resource.type = "cloud_run_revision"
+          AND resource.labels.service_name = "revalida-backend"
+          AND metric.type = "run.googleapis.com/websocket/error_count"
+        aggregations:
+          - alignmentPeriod: "300s"
+            crossSeriesReducer: REDUCE_SUM
+            perSeriesAligner: ALIGN_RATE
+        comparison: COMPARISON_GT
+        duration: "300s"
+        thresholdValue: 0.1  # 10%
+        trigger:
+          count: 1
+  notificationChannels:
+    - email
+  enabled: true
+
+# 7. Alerta para Tempo de Resposta Alto
+high-latency-alert:
+  displayName: "Tempo de Resposta Alto"
+  description: "Latência média acima de 5 segundos"
+  conditions:
+    - displayName: "Response Latency > 5s"
+      conditionThreshold:
+        filter: >
+          resource.type = "cloud_run_revision"
+          AND resource.labels.service_name = "revalida-backend"
+          AND metric.type = "run.googleapis.com/request_latencies"
+        aggregations:
+          - alignmentPeriod: "300s"
+            crossSeriesReducer: REDUCE_MEAN
+            perSeriesAligner: ALIGN_PERCENTILE_95
+        comparison: COMPARISON_GT
+        duration: "300s"
+        thresholdValue: 5000  # 5 segundos em ms
+        trigger:
+          count: 1
+  notificationChannels:
+    - email
+  enabled: true
+
+# Configuração de Canal de Notificação por Email
+notificationChannels:
+  email:
+    type: email
+    displayName: "Alertas de Custos Cloud Run"
+    description: "Notificações por email para alertas de custos e performance"
+    labels:
+      email_address: "seu-email@exemplo.com"  # ALTERE PARA SEU EMAIL
+
+# Dashboard de Monitoramento (opcional)
+dashboard:
+  displayName: "Dashboard Cloud Run - Revalida Companion"
+  description: "Painel de monitoramento para acompanhar custos e performance"
+  widgets:
+    - title: "Custos Diários"
+      xyChart:
+        dataSets:
+          - timeSeriesQuery:
+              timeSeriesFilter:
+                filter: >
+                  resource.type = "cloud_run_revision"
+                  AND resource.labels.service_name = "revalida-backend"
+                  AND metric.type = "run.googleapis.com/container/billable_instance_time"
+                aggregations:
+                  - alignmentPeriod: "86400s"
+                  - crossSeriesReducer: REDUCE_SUM
+                  - perSeriesAligner: ALIGN_SUM
+        chartOptions:
+          mode: COLOR
+
+    - title: "Uso de CPU"
+      xyChart:
+        dataSets:
+          - timeSeriesQuery:
+              timeSeriesFilter:
+                filter: >
+                  resource.type = "cloud_run_revision"
+                  AND resource.labels.service_name = "revalida-backend"
+                  AND metric.type = "run.googleapis.com/container/cpu/utilizations"
+                aggregations:
+                  - alignmentPeriod: "300s"
+                  - crossSeriesReducer: REDUCE_MEAN
+                  - perSeriesAligner: ALIGN_MEAN
+        chartOptions:
+          mode: COLOR
+
+    - title: "Uso de Memória"
+      xyChart:
+        dataSets:
+          - timeSeriesQuery:
+              timeSeriesFilter:
+                filter: >
+                  resource.type = "cloud_run_revision"
+                  AND resource.labels.service_name = "revalida-backend"
+                  AND metric.type = "run.googleapis.com/container/memory/utilizations"
+                aggregations:
+                  - alignmentPeriod: "300s"
+                  - crossSeriesReducer: REDUCE_MEAN
+                  - perSeriesAligner: ALIGN_MEAN
+        chartOptions:
+          mode: COLOR
+
+    - title: "Contagem de Solicitações"
+      xyChart:
+        dataSets:
+          - timeSeriesQuery:
+              timeSeriesFilter:
+                filter: >
+                  resource.type = "cloud_run_revision"
+                  AND resource.labels.service_name = "revalida-backend"
+                  AND metric.type = "run.googleapis.com/request_count"
+                aggregations:
+                  - alignmentPeriod: "60s"
+                  - crossSeriesReducer: REDUCE_SUM
+                  - perSeriesAligner: ALIGN_RATE
+        chartOptions:
+          mode: COLOR

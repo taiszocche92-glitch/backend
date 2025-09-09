@@ -13,7 +13,9 @@
     "express": "^4.18.2",
     "firebase-admin": "^13.4.0",
     "math-intrinsics": "^1.1.0",
+    "minimist": "^1.2.8",
     "node-cache": "^5.1.2",
-    "socket.io": "^4.7.5"
+    "socket.io": "^4.7.5",
+    "socket.io-client": "^4.8.1"
   }
 }

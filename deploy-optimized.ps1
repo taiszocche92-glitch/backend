@@ -129,7 +129,7 @@ try {
   $serviceUrl = & gcloud run services describe $ServiceName --region $Region --format="value(status.url)"
   if ($serviceUrl) {
     Write-Host "[INFO] Verificando health: $serviceUrl/health"
-    $hc = Invoke-WebRequest -Uri ($serviceUrl + "/health") -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
+    Invoke-WebRequest -Uri ($serviceUrl + "/health") -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
     Write-Host "[SUCCESS] Health check OK"
   }
 } catch {
