@@ -28,6 +28,10 @@
 
 // Carrega variáveis de ambiente do .env
 require('dotenv').config();
+
+// Inicializa Sentry PRIMEIRO, antes de qualquer outra coisa
+const { initSentry, Sentry, captureWebSocketError, captureSimulationError } = require('./config/sentry');
+initSentry();
 // Se for fornecido o secret JSON via env var (FIREBASE_SA_JSON), parseie-o aqui.
 let FIREBASE_SA = null;
 if (process.env.FIREBASE_SA_JSON) {
@@ -150,6 +154,8 @@ if (process.env.NODE_ENV === 'production') {
 
 const app = express();
 const server = http.createServer(app);
+
+// Sentry configurado - captura básica de erros ativa
 
 // Middleware de debug para logar headers de requisições OPTIONS (apenas em desenvolvimento)
 app.use((req, res, next) => {
@@ -1023,8 +1029,18 @@ io.on('connection', (socket) => {
   }
 
   // --- Limpeza do mapeamento ao desconectar ---
-  socket.on('disconnect', () => {
-    console.log(`[DESCONEXÃO] Cliente desconectado: ${socket.id}`);
+  socket.on('disconnect', (reason) => {
+    console.log(`[DESCONEXÃO] Cliente desconectado: ${socket.id}, Razão: ${reason}`);
+
+    // Captura desconexões problemáticas no Sentry
+    if (reason !== 'client namespace disconnect' && reason !== 'transport close') {
+      captureWebSocketError(new Error(`WebSocket disconnect: ${reason}`), {
+        socketId: socket.id,
+        sessionId,
+        userId: handshakeUserId,
+        participants: session ? session.participants.size : 0
+      });
+    }
 
     // Limpa o mapeamento global
     if (handshakeUserId) {
@@ -1119,6 +1135,8 @@ process.on('SIGINT', () => {
   console.log('🛑 Recebido SIGINT, iniciando shutdown graceful...');
   process.emit('SIGTERM');
 });
+
+// Sentry ativo - erros capturados automaticamente
 
 // --- Iniciar o Servidor ---
 
