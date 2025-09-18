@@ -59,7 +59,7 @@ const {
 } = require('./cache');
 
 // Importar fix de CORS para Cloud Run
-const { applyCorsHeaders, debugCors } = require('./utils/fix-cors-cloud-run');
+const { applyCorsHeaders, debugCors } = require('./fix-cors-cloud-run');
 
 // --- INICIALIZAÇÃO CONDICIONAL DO FIREBASE ---
 // Apenas inicializa o Firebase Admin SDK em ambiente de produção.
@@ -133,9 +133,9 @@ if (process.env.NODE_ENV === 'production') {
       throw new Error(`Credenciais do Firebase ausentes: ${missingCredentials.join(', ')}. Configure via Secret Manager ou variáveis de ambiente.`);
     }
   } catch (error) {
-    console.error('🛑 [PROD] ERRO CRÍTICO ao inicializar Firebase Admin SDK:', error.message, error.stack);
-    console.error('    O backend continuará em modo degradado, mas isso deve ser investigado.');
-    // process.exit(1); // DESATIVADO TEMPORARIAMENTE PARA DEBUG
+    console.error('🛑 [PROD] ERRO CRÍTICO ao inicializar Firebase Admin SDK:', error.message);
+    console.error('    O backend não pode operar em produção sem o Firebase. Encerrando.');
+    process.exit(1); // Em produção, falhar é mais seguro do que rodar sem DB
   }
 } else {
   // --- MODO DE DESENVOLVIMENTO LOCAL (MOCK) ---
@@ -145,20 +145,6 @@ if (process.env.NODE_ENV === 'production') {
   console.warn('📝 O backend funcionará com funcionalidade limitada em modo mock.');
   console.warn('🔥 Para conectar ao Firebase, rode com NODE_ENV=production.');
   global.firebaseMockMode = true;
-
-  // Criar um mock do admin.firestore() para evitar erros em desenvolvimento
-  const admin = require('firebase-admin');
-  if (admin.apps.length === 0) {
-    // Mock básico do Firebase Admin para desenvolvimento
-    global.mockFirestore = {
-      collection: () => ({
-        get: () => Promise.resolve({ docs: [], size: 0 }),
-        doc: () => ({
-          get: () => Promise.resolve({ exists: false, data: () => null })
-        })
-      })
-    };
-  }
 }
 
 
@@ -182,16 +168,10 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "http://localhost:5174", // Adicionando porta 5174
-  "http://localhost:5175", // Adicionando porta 5175 do seu frontend
   DEFAULT_FRONTEND,
   "https://revalida-companion.web.app",
   "https://revalida-companion.firebaseapp.com"
 ];
-
-// Adicionar localhost:5173 explicitamente se não estiver na lista
-if (!allowedOrigins.includes("http://localhost:5173")) {
-  allowedOrigins.push("http://localhost:5173");
-}
 
 if (process.env.FRONTEND_URL) {
   // adicionar sem duplicar
@@ -210,72 +190,25 @@ const io = new Server(server, {
   }
 });
 
-// Logar erros de handshake/connection do engine.io para facilitar debug
-try {
-  if (io && io.engine && typeof io.engine.on === 'function') {
-    io.engine.on('connection_error', (err) => {
-      try {
-        console.error('[SOCKET.IO] engine connection_error:', err && (err.message || err));
-        // imprimir stack se disponível
-        if (err && err.stack) console.error(err.stack);
-      } catch (e) {
-        console.error('[SOCKET.IO] erro ao logar connection_error:', e && e.message);
-      }
-    });
-  }
-} catch (e) {
-  console.warn('[SOCKET.IO] não foi possível registrar engine connection_error handler:', e && e.message);
-}
-
 // Middleware agressivo para garantir CORS em todas as requisições, especialmente OPTIONS
 app.use((req, res, next) => {
   const tunnelOrigin = "";
   const requestOrigin = req.headers.origin;
 
-  // Lógica de CORS mais permissiva para desenvolvimento local
-  if (process.env.NODE_ENV !== 'production') {
-    // Em desenvolvimento, permitir localhost:5173 e localhost:5174
-    if (requestOrigin && (requestOrigin.includes('localhost:5173') || requestOrigin.includes('localhost:5174'))) {
-      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
-      res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      console.log(`[CORS DEV] Permitido: ${requestOrigin}`);
-    } else {
-      // Para outras origens, usar a lógica original
-      if (requestOrigin === tunnelOrigin || allowedOrigins.includes(requestOrigin)) {
-        res.setHeader('Access-Control-Allow-Origin', requestOrigin);
-        res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-      } else {
-        // Se a origem não está na lista, mas é o domínio padrão do frontend, permita também
-        if (requestOrigin && requestOrigin === DEFAULT_FRONTEND) {
-          res.setHeader('Access-Control-Allow-Origin', requestOrigin);
-          res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-          res.setHeader('Access-Control-Allow-Credentials', 'true');
-        }
-        // Caso contrário, não setamos CORS e o navegador bloqueará a requisição.
-      }
-    }
+  if (requestOrigin === tunnelOrigin || allowedOrigins.includes(requestOrigin)) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   } else {
-    // Em produção, usar a lógica original
-    if (requestOrigin === tunnelOrigin || allowedOrigins.includes(requestOrigin)) {
+    // Se a origem não está na lista, mas é o domínio padrão do frontend, permita também
+    if (requestOrigin && requestOrigin === DEFAULT_FRONTEND) {
       res.setHeader('Access-Control-Allow-Origin', requestOrigin);
       res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
       res.setHeader('Access-Control-Allow-Credentials', 'true');
-    } else {
-      // Se a origem não está na lista, mas é o domínio padrão do frontend, permita também
-      if (requestOrigin && requestOrigin === DEFAULT_FRONTEND) {
-        res.setHeader('Access-Control-Allow-Origin', requestOrigin);
-        res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-      }
-      // Caso contrário, não setamos CORS e o navegador bloqueará a requisição.
     }
+    // Caso contrário, não setamos CORS e o navegador bloqueará a requisição.
   }
 
   if (req.method === 'OPTIONS') {
@@ -288,14 +221,6 @@ app.use((req, res, next) => {
 // O middleware 'cors' padrão e 'app.options' foram removidos para evitar conflitos
 // e confiar apenas no middleware 'app.all' para o controle de CORS.
 app.use(express.json());
-
-// Middleware de debug para todas as requisições
-app.use((req, res, next) => {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`[DEBUG] ${req.method} ${req.path} - Origin: ${req.headers.origin}`);
-  }
-  next();
-});
 
 // --- DEBUG INSTRUMENTATION (temporário) ---
 const debugStats = {
@@ -316,55 +241,6 @@ function addHttpLog(entry) {
 // Lembrete: Este Map em memória é perdido se o servidor reiniciar.
 // Para produção, o ideal é usar um banco de dados como Firestore ou Redis.
 const sessions = new Map();
-
-// Map para associar userId ao socketId
-const userIdToSocketId = new Map();
-
-// Sistema de Buffer para Batch Updates
-const scoreUpdateBuffers = new Map();
-const SCORE_UPDATE_DEBOUNCE_MS = 1000; // 1 segundo para agrupar updates
-
-// Função para processar batch de atualizações de score
-async function processScoreUpdateBatch(bufferKey) {
-  const buffer = scoreUpdateBuffers.get(bufferKey);
-  if (!buffer) return;
-
-  const [sessionId, userId] = bufferKey.split('_');
-
-  try {
-    // Salvar no Firestore apenas se não estiver em modo mock
-    if (!global.firebaseMockMode && admin.apps.length > 0) {
-      const userRef = admin.firestore().collection('usuarios').doc(userId);
-      const sessionRef = admin.firestore().collection('sessoes_simulacao').doc(sessionId);
-
-      // Usar transaction para atomicidade
-      await admin.firestore().runTransaction(async (transaction) => {
-        // Atualizar estatísticas do usuário
-        transaction.update(userRef, {
-          'estatisticas.ultimaAtualizacao': admin.firestore.FieldValue.serverTimestamp(),
-          'estatisticas.scores': buffer.scores,
-          'estatisticas.totalScore': buffer.totalScore
-        });
-
-        // Registrar na sessão
-        transaction.update(sessionRef, {
-          'updates': admin.firestore.FieldValue.arrayUnion({
-            timestamp: admin.firestore.FieldValue.serverTimestamp(),
-            scores: buffer.scores,
-            totalScore: buffer.totalScore
-          })
-        });
-      });
-
-      console.log(`[BATCH UPDATE] Sessão ${sessionId}: ${Object.keys(buffer.scores).length} scores atualizados em batch`);
-    }
-  } catch (error) {
-    console.error('[BATCH UPDATE] Erro ao processar batch:', error.message);
-  } finally {
-    // Limpar buffer após processamento
-    scoreUpdateBuffers.delete(bufferKey);
-  }
-}
 
 // --- Endpoints HTTP ---
 
@@ -531,50 +407,19 @@ app.post('/api/cache/invalidate', async (req, res) => {
 
 // Endpoint para criar uma nova sessão de simulação (pouco usado com a lógica atual de socket)
 app.post('/api/create-session', (req, res) => {
-  try {
-    const { stationId, durationMinutes, localSessionId } = req.body;
-
-    // Validação básica dos parâmetros
-    if (!stationId) {
-      return res.status(400).json({ error: 'ID da estação é obrigatório' });
-    }
-
-    // Log apenas em desenvolvimento para não gerar custos em produção
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[CREATE-SESSION] Requisição recebida:`, {
-        stationId,
-        durationMinutes,
-        localSessionId
-      });
-    }
-
-    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    sessions.set(sessionId, {
-      stationId,
-      durationMinutes: durationMinutes || 10, // Valor padrão se não fornecido
-      participants: new Map(), // Usar um Map para participantes é mais eficiente
-      createdAt: new Date(),
-      timer: null
-    });
-
-    // Log apenas em desenvolvimento
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[HTTP] Nova sessão criada via API: ${sessionId} para estação ${stationId}`);
-    }
-
-    res.status(201).json({
-      sessionId,
-      durationMinutes: durationMinutes || 10,
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('[CREATE-SESSION] Erro interno:', error);
-    res.status(500).json({
-      error: 'Erro interno do servidor ao criar sessão',
-      details: error.message
-    });
+  const { stationId } = req.body;
+  if (!stationId) {
+    return res.status(400).json({ error: 'ID da estação é obrigatório' });
   }
+  const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  sessions.set(sessionId, {
+    stationId,
+    participants: new Map(), // Usar um Map para participantes é mais eficiente
+    createdAt: new Date(),
+    timer: null
+  });
+  console.log(`[HTTP] Nova sessão criada via API: ${sessionId}`);
+  res.status(201).json({ sessionId });
 });
 
 // --- ENDPOINT DE DEBUG E MONITORAMENTO (otimizado) ---
@@ -597,31 +442,6 @@ app.get('/debug/metrics', (req, res) => {
     activeSessions: sessions.size,
     activeUsers: userIdToSocketId.size
   });
-});
-
-// Endpoint para forçar processamento de buffers pendentes
-app.post('/api/batch/process-pending', (req, res) => {
-  try {
-    const buffersToProcess = Array.from(scoreUpdateBuffers.keys());
-    let processed = 0;
-
-    buffersToProcess.forEach(key => {
-      processScoreUpdateBatch(key);
-      processed++;
-    });
-
-    res.json({
-      success: true,
-      message: `${processed} buffers processados`,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
 });
 
 // Endpoint para limpeza manual do cache
@@ -952,48 +772,6 @@ app.get('/api/stations/:stationId/download-json', async (req, res) => {
 });
 
 
-function debounceScoreUpdate(sessionId, userId, scores, totalScore) {
-  const bufferKey = `${sessionId}_${userId}`;
-
-  if (!scoreUpdateBuffers.has(bufferKey)) {
-    scoreUpdateBuffers.set(bufferKey, {
-      scores: {},
-      totalScore: 0,
-      timeoutId: null,
-      lastUpdate: Date.now()
-    });
-  }
-
-  const buffer = scoreUpdateBuffers.get(bufferKey);
-
-  // Atualizar scores individuais
-  Object.assign(buffer.scores, scores);
-  buffer.totalScore = totalScore;
-  buffer.lastUpdate = Date.now();
-
-  // Limpar timeout anterior se existir
-  if (buffer.timeoutId) {
-    clearTimeout(buffer.timeoutId);
-  }
-
-  // Configurar novo timeout para processar o batch
-  buffer.timeoutId = setTimeout(() => {
-    processScoreUpdateBatch(bufferKey);
-  }, SCORE_UPDATE_DEBOUNCE_MS);
-}
-
-// Limpeza automática de buffers antigos
-setInterval(() => {
-  const now = Date.now();
-  const MAX_BUFFER_AGE = 30000; // 30 segundos
-
-  for (const [key, buffer] of scoreUpdateBuffers.entries()) {
-    if (now - buffer.lastUpdate > MAX_BUFFER_AGE) {
-      processScoreUpdateBatch(key);
-    }
-  }
-}, 10000); // Verificar a cada 10 segundos
-
 // --- Funções utilitárias para timer por sessão ---
 function startSessionTimer(sessionId, durationSeconds, onTick, onEnd) {
   const session = sessions.get(sessionId);
@@ -1020,6 +798,9 @@ function stopSessionTimer(sessionId, reason) {
 }
 
 // --- Lógica do Socket.IO ---
+
+// Map para associar userId ao socketId
+const userIdToSocketId = new Map();
 
 io.on('connection', (socket) => {
   // --- Mapeamento global de userId <-> socketId ---
@@ -1109,14 +890,6 @@ io.on('connection', (socket) => {
   const { sessionId, userId, role, stationId, displayName } = socket.handshake.query;
   if (sessionId && userId && role && stationId && displayName) {
 
-    // BLOQUEIO DE SESSÃO FANTASMA
-    if (sessionId === 'session_1756966678291_ktdmy') {
-      console.log(`[BLOQUEIO] Tentativa de recriação de sessão fantasma bloqueada. SessionId: ${sessionId}, UserId: ${userId}`);
-      socket.emit('SERVER_ERROR', { message: 'Esta sessão foi bloqueada por atividade incomum.' });
-      socket.disconnect();
-      return;
-    }
-
     // Cria a sessão se for o primeiro a entrar
     if (!sessions.has(sessionId)) {
       sessions.set(sessionId, {
@@ -1160,28 +933,6 @@ io.on('connection', (socket) => {
     }
 
 
-    // Cliente se marca como pronto
-    socket.on('CLIENT_READY', (data) => {
-      if (session && session.participants.has(userId)) {
-        const participant = session.participants.get(userId);
-        participant.isReady = data.isReady;
-        console.log(`[READY] Usuário ${displayName} (${role}) está pronto: ${data.isReady}`);
-
-        // Retransmitir para o outro participante
-        socket.to(sessionId).emit('SERVER_PARTNER_READY', {
-          userId: userId,
-          isReady: data.isReady
-        });
-
-        const updatedParticipantsList = Array.from(session.participants.values());
-        const allReady = updatedParticipantsList.length === 2 && updatedParticipantsList.every(p => p.isReady);
-
-        if (allReady) {
-          console.log(`[READY] Ambos os participantes da sessão ${sessionId} estão prontos.`);
-          io.to(sessionId).emit('SERVER_BOTH_PARTICIPANTS_READY');
-        }
-      }
-    });
     // --- Eventos da Simulação ---
 
     // Cliente se marca como pronto
@@ -1264,18 +1015,9 @@ io.on('connection', (socket) => {
       // Apenas ator ou avaliador pode enviar estas atualizações
       if (participant && (participant.role === 'actor' || participant.role === 'evaluator')) {
         const { scores, totalScore } = data;
-
         // Envia as notas atualizadas para todos na sessão (incluindo o candidato)
         io.to(sessionId).emit('CANDIDATE_RECEIVE_UPDATED_SCORES', { scores, totalScore });
-
-        // Encontrar o candidato na sessão para salvar as atualizações
-        const candidate = Array.from(session.participants.values()).find(p => p.role === 'candidate');
-        if (candidate && candidate.userId) {
-          // Usar sistema de buffer para batch updates (debouncing)
-          debounceScoreUpdate(sessionId, candidate.userId, scores, totalScore);
-        }
-
-        console.log(`[PEP SCORE UPDATE] Sessão ${sessionId}: ${Object.keys(scores).length} scores recebidos (em buffer). Total: ${totalScore}`);
+        console.log(`[PEP SCORE UPDATE] Sessão ${sessionId}: Notas atualizadas enviadas para candidato. Total: ${totalScore}`);
       }
     });
   }
@@ -1306,13 +1048,6 @@ io.on('connection', (socket) => {
         // Se a sessão ficar vazia, pode ser removida
         if (session.participants.size === 0) {
           stopSessionTimer(sessionId, 'session_empty');
-
-          // Processar buffers pendentes antes de remover a sessão
-          const buffersProcessed = processSessionBuffers(sessionId);
-          if (buffersProcessed > 0) {
-            console.log(`[SESSÃO ENCERRADA] Sessão ${sessionId} removida. ${buffersProcessed} buffers processados.`);
-          }
-
           sessions.delete(sessionId);
           console.log(`[SESSÃO ENCERRADA] Sessão ${sessionId} removida por estar vazia.`);
         }
@@ -1335,18 +1070,6 @@ setInterval(() => {
     console.warn('[CACHE CLEANUP] Erro na limpeza automática:', error.message);
   }
 }, 300000); // 5 minutos
-
-// Função para processar todos os buffers de uma sessão específica
-function processSessionBuffers(sessionId) {
-  const buffersToProcess = Array.from(scoreUpdateBuffers.keys())
-    .filter(key => key.startsWith(`${sessionId}_`));
-
-  buffersToProcess.forEach(key => {
-    processScoreUpdateBatch(key);
-  });
-
-  return buffersToProcess.length;
-}
 
 // Limpeza automática de sessões antigas (para liberar memória)
 setInterval(() => {
