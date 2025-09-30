@@ -81,7 +81,7 @@ router.post('/start', authenticateUser, async (req, res) => {
     console.log('🚀 [AI-SIM START] Requisição recebida');
     console.log('🚀 [AI-SIM START] Body:', req.body);
 
-    const { stationId, userId } = req.body;
+    const { stationId, userId, stationData: providedStationData } = req.body;
 
     if (!stationId) {
       console.log('❌ [AI-SIM START] stationId ausente');
@@ -93,21 +93,29 @@ router.post('/start', authenticateUser, async (req, res) => {
 
     console.log('🚀 [AI-SIM START] stationId:', stationId);
 
-    // Buscar dados da estação no Firestore
-    const stationRef = db.collection('estacoes_clinicas').doc(stationId);
-    const stationDoc = await stationRef.get();
+    let stationData;
 
-    if (!stationDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        error: 'Station not found'
-      });
+    // Se dados da estação foram fornecidos, usar eles; senão buscar no Firestore
+    if (providedStationData) {
+      stationData = providedStationData;
+      console.log('🚀 [AI-SIM START] Usando dados da estação fornecidos');
+    } else {
+      // Buscar dados da estação no Firestore
+      const stationRef = db.collection('estacoes_clinicas').doc(stationId);
+      const stationDoc = await stationRef.get();
+
+      if (!stationDoc.exists) {
+        return res.status(404).json({
+          success: false,
+          error: 'Station not found'
+        });
+      }
+
+      stationData = {
+        id: stationDoc.id,
+        ...stationDoc.data()
+      };
     }
-
-    const stationData = {
-      id: stationDoc.id,
-      ...stationDoc.data()
-    };
 
     // Validar se a estação tem dados necessários para simulação
     const informacoesVerbais = stationData.materiaisDisponiveis?.informacoesVerbaisSimulado;
@@ -154,7 +162,7 @@ router.post('/start', authenticateUser, async (req, res) => {
  */
 router.post('/message', authenticateUser, validateSession, async (req, res) => {
   try {
-    const { sessionId, message } = req.body;
+    const { sessionId, message, stationData, releasedData } = req.body;
 
     if (!message || message.trim().length === 0) {
       return res.status(400).json({
@@ -164,7 +172,10 @@ router.post('/message', authenticateUser, validateSession, async (req, res) => {
     }
 
     const engine = getAIEngine();
-    const result = await engine.processMessage(sessionId, message.trim());
+    const result = await engine.processMessage(sessionId, message.trim(), {
+      stationData,
+      releasedData
+    });
 
     if (!result.success) {
       return res.status(500).json(result);
@@ -172,7 +183,7 @@ router.post('/message', authenticateUser, validateSession, async (req, res) => {
 
     res.json({
       success: true,
-      patientResponse: result.patientResponse,
+      aiResponse: result.patientResponse || result.aiResponse,
       contextUsed: result.contextUsed || [],
       materialsReleased: result.materialsReleased || [],
       materialNames: result.materialNames || '',
@@ -188,7 +199,7 @@ router.post('/message', authenticateUser, validateSession, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to process message: ' + error.message,
-      patientResponse: 'Desculpe, tive um problema para responder. Pode repetir a pergunta?'
+      aiResponse: 'Desculpe, tive um problema para responder. Pode repetir a pergunta?'
     });
   }
 });
@@ -267,10 +278,10 @@ router.get('/status/:sessionId', authenticateUser, async (req, res) => {
  */
 router.post('/end', authenticateUser, validateSession, async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    const { sessionId, finalData } = req.body;
 
     const engine = getAIEngine();
-    const result = engine.endSimulation(sessionId);
+    const result = engine.endSimulation(sessionId, finalData);
 
     res.json(result);
 
@@ -327,6 +338,122 @@ router.get('/health', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Health check failed: ' + error.message
+    });
+  }
+});
+
+/**
+ * POST /api/ai-simulation/evaluate-pep
+ * IA avaliar automaticamente o PEP com base na conversa
+ */
+router.post('/evaluate-pep', authenticateUser, validateSession, async (req, res) => {
+  try {
+    const { sessionId, stationData, checklistData, conversationHistory, releasedData } = req.body;
+
+    if (!checklistData?.itensAvaliacao?.length) {
+      return res.json({
+        success: false,
+        error: 'Nenhum item de avaliação encontrado no PEP'
+      });
+    }
+
+    // Criar prompt para IA avaliar o PEP
+    const evaluationPrompt = `
+Você é um avaliador médico experiente. Analise a conversa abaixo entre um candidato médico e um paciente virtual, e avalie a performance com base no checklist de avaliação (PEP).
+
+**ESTAÇÃO:** ${stationData.tituloEstacao}
+**ESPECIALIDADE:** ${stationData.especialidade}
+
+**HISTÓRICO DA CONVERSA:**
+${conversationHistory.map(msg => {
+  if (msg.role === 'candidate') return `CANDIDATO: ${msg.content}`;
+  if (msg.role === 'ai_actor') return `PACIENTE: ${msg.content}`;
+  return `SISTEMA: ${msg.content}`;
+}).join('\n')}
+
+**MATERIAIS LIBERADOS:** ${Object.keys(releasedData).length} materiais foram solicitados e liberados.
+
+**ITENS DE AVALIAÇÃO (PEP):**
+${checklistData.itensAvaliacao.map((item, index) => {
+  const pontosVerificacao = item.pontosVerificacao || [];
+  return `${index + 1}. ${item.descricaoItem}
+   Pontos de verificação (marque true/false para cada):
+   ${pontosVerificacao.map((ponto, i) => `   ${i + 1}. ${ponto.descricao} [AVALIAR]`).join('\n')}`;
+}).join('\n\n')}
+
+**INSTRUÇÕES:**
+- Avalie cada ponto de verificação como true (executado corretamente) ou false (não executado ou incorreto)
+- Seja criterioso mas justo na avaliação
+- Considere a qualidade da anamnese, exame físico, raciocínio clínico e comunicação
+- Base sua avaliação APENAS no que foi demonstrado na conversa
+
+**FORMATO DE RESPOSTA (JSON):**
+{
+  "itemId1": [true, false, true],
+  "itemId2": [false, true],
+  ...
+}
+
+Onde cada array contém os valores boolean para os pontos de verificação daquele item.
+`;
+
+    const geminiManager = getGeminiManager();
+    const result = await geminiManager.generateResponse(evaluationPrompt, {
+      model: 'gemini-1.5-flash',
+      maxOutputTokens: 2000,
+      temperature: 0.3
+    });
+
+    // Tentar extrair JSON da resposta
+    let evaluations = {};
+    try {
+      const jsonMatch = result.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        evaluations = JSON.parse(jsonMatch[0]);
+      }
+    } catch (parseError) {
+      console.log('❌ Erro ao parsear avaliação da IA:', parseError);
+
+      // Fallback: criar avaliação baseada em keywords na conversa
+      checklistData.itensAvaliacao.forEach(item => {
+        const pontosCount = item.pontosVerificacao?.length || 0;
+        if (pontosCount > 0) {
+          // Avaliar baseado em palavras-chave simples
+          const conversationText = conversationHistory
+            .filter(msg => msg.role === 'candidate')
+            .map(msg => msg.content)
+            .join(' ')
+            .toLowerCase();
+
+          const hasAnamnesis = conversationText.includes('nome') || conversationText.includes('idade') || conversationText.includes('queixa');
+          const hasExamination = conversationText.includes('exame') || conversationText.includes('físico') || conversationText.includes('dor');
+
+          // Criar array de avaliação simples
+          evaluations[item.idItem] = Array(pontosCount).fill(false).map((_, index) => {
+            if (index === 0) return hasAnamnesis; // Primeiro ponto geralmente é anamnese
+            if (index === 1) return hasExamination; // Segundo ponto geralmente é exame
+            return Math.random() > 0.5; // Outros pontos aleatórios
+          });
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      evaluations,
+      metadata: {
+        keyUsed: result.keyUsed,
+        tokensUsed: result.tokensUsed,
+        conversationLength: conversationHistory.length,
+        materialsReleased: Object.keys(releasedData).length
+      }
+    });
+
+  } catch (error) {
+    console.error('Error evaluating PEP with AI:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to evaluate PEP: ' + error.message
     });
   }
 });

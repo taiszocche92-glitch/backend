@@ -204,7 +204,7 @@ app.use((req, res, next) => {
   if (requestOrigin === tunnelOrigin || allowedOrigins.includes(requestOrigin)) {
     res.setHeader('Access-Control-Allow-Origin', requestOrigin);
     res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, user-id');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   } else {
     // Se a origem não está na lista, mas é o domínio padrão do frontend, permita também
@@ -247,6 +247,16 @@ function addHttpLog(entry) {
 // Lembrete: Este Map em memória é perdido se o servidor reiniciar.
 // Para produção, o ideal é usar um banco de dados como Firestore ou Redis.
 const sessions = new Map();
+
+// --- Rotas do Backend ---
+
+// Registrar rotas de AI Simulation
+const aiSimulationRoutes = require('./routes/aiSimulation');
+app.use('/api/ai-simulation', aiSimulationRoutes);
+
+// Registrar rotas de AI Chat (Gemini 2.5 Flash)
+const aiChatRoutes = require('./routes/aiChat');
+app.use('/api/ai-chat', aiChatRoutes);
 
 // --- Endpoints HTTP ---
 

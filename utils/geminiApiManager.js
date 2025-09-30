@@ -3,10 +3,21 @@ const { createHash } = require('crypto');
 
 class GeminiAPIManager {
   constructor() {
-    this.freeKeys = this.loadApiKeys('free');
-    this.paidKeys = this.loadApiKeys('paid');
+    // Inicializar propriedades primeiro
     this.quotaCache = new Map(); // Cache de quotas em memória
     this.lastResetDate = new Date().toDateString();
+    this.freeKeys = [];
+    this.paidKeys = [];
+
+    // Carregar chaves apenas após inicialização completa
+    try {
+      this.freeKeys = this.loadApiKeys('free');
+      this.paidKeys = this.loadApiKeys('paid');
+    } catch (error) {
+      console.error('❌ Erro ao carregar chaves API:', error.message);
+      this.freeKeys = [];
+      this.paidKeys = [];
+    }
 
     // Reset diário automático
     this.checkDailyReset();
@@ -38,7 +49,7 @@ class GeminiAPIManager {
 
           // Inicializar cache de quota
           const cacheKey = this.getCacheKey(key);
-          if (!this.quotaCache.has(cacheKey)) {
+          if (this.quotaCache && !this.quotaCache.has(cacheKey)) {
             this.quotaCache.set(cacheKey, {
               used: 0,
               date: new Date().toDateString(),
@@ -67,7 +78,7 @@ class GeminiAPIManager {
 
         // Inicializar cache de quota
         const cacheKey = this.getCacheKey(key);
-        if (!this.quotaCache.has(cacheKey)) {
+        if (this.quotaCache && !this.quotaCache.has(cacheKey)) {
           this.quotaCache.set(cacheKey, {
             used: 0,
             date: new Date().toDateString(),
